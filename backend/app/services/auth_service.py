@@ -1,13 +1,12 @@
+import json
+import os
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-import os
 
-# 密码加密上下文
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# 简化认证，不使用bcrypt
 security = HTTPBearer()
 
 # JWT配置
@@ -15,33 +14,58 @@ SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 
-# 模拟用户数据库
-fake_users_db = {
-    "admin": {
-        "id": 1,
-        "username": "admin",
-        "email": "admin@example.com",
-        "role": "admin",
-        "hashed_password": "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW",  # admin123
-        "created_at": "2024-01-01 10:00:00"
-    },
-    "analyst": {
-        "id": 2,
-        "username": "analyst",
-        "email": "analyst@example.com",
-        "role": "user",
-        "hashed_password": "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW",  # analyst123
-        "created_at": "2024-01-02 11:30:00"
-    }
-}
+# 用户数据文件
+USERS_FILE = "users.json"
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
+def load_users():
+    """从文件加载用户数据"""
+    if os.path.exists(USERS_FILE):
+        try:
+            with open(USERS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    
+    # 如果文件不存在或读取失败，返回默认用户
+    default_users = {
+        "admin": {
+            "id": 1,
+            "username": "admin",
+            "email": "admin@example.com",
+            "role": "admin",
+            "password": "admin123",
+            "created_at": "2024-01-01 10:00:00"
+        },
+        "analyst": {
+            "id": 2,
+            "username": "analyst",
+            "email": "analyst@example.com",
+            "role": "user",
+            "password": "analyst123",
+            "created_at": "2024-01-02 11:30:00"
+        }
+    }
+    save_users(default_users)
+    return default_users
+
+def save_users(users_db):
+    """保存用户数据到文件"""
+    try:
+        with open(USERS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(users_db, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Error saving users: {e}")
+
+# 加载用户数据库
+fake_users_db = load_users()
+
+def verify_password(plain_password: str, stored_password: str) -> bool:
     """验证密码"""
-    return pwd_context.verify(plain_password, hashed_password)
+    return plain_password == stored_password
 
 def get_password_hash(password: str) -> str:
-    """生成密码哈希"""
-    return pwd_context.hash(password)
+    """生成密码哈希（这里直接返回明文）"""
+    return password
 
 def get_user(username: str):
     """获取用户信息"""
@@ -55,7 +79,7 @@ def authenticate_user(username: str, password: str):
     user = get_user(username)
     if not user:
         return False
-    if not verify_password(password, user["hashed_password"]):
+    if not verify_password(password, user["password"]):
         return False
     return user
 
@@ -122,6 +146,8 @@ class UserService:
     @staticmethod
     def create_user(username: str, email: str, password: str, role: str = "user"):
         """创建用户"""
+        global fake_users_db
+        
         if username in fake_users_db:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -129,16 +155,18 @@ class UserService:
             )
         
         user_id = max([user["id"] for user in fake_users_db.values()]) + 1
-        hashed_password = get_password_hash(password)
         
         fake_users_db[username] = {
             "id": user_id,
             "username": username,
             "email": email,
             "role": role,
-            "hashed_password": hashed_password,
+            "password": password,  # 存储明文密码
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
+        
+        # 保存到文件
+        save_users(fake_users_db)
         
         return {
             "id": user_id,
@@ -151,12 +179,17 @@ class UserService:
     @staticmethod
     def update_user(user_id: int, email: str = None, role: str = None):
         """更新用户"""
+        global fake_users_db
+        
         for username, user_data in fake_users_db.items():
             if user_data["id"] == user_id:
                 if email:
                     user_data["email"] = email
                 if role:
                     user_data["role"] = role
+                
+                # 保存到文件
+                save_users(fake_users_db)
                 
                 return {
                     "id": user_data["id"],
@@ -174,6 +207,8 @@ class UserService:
     @staticmethod
     def delete_user(user_id: int):
         """删除用户"""
+        global fake_users_db
+        
         for username, user_data in fake_users_db.items():
             if user_data["id"] == user_id:
                 if username == "admin":
@@ -182,6 +217,10 @@ class UserService:
                         detail="Cannot delete admin user"
                     )
                 del fake_users_db[username]
+                
+                # 保存到文件
+                save_users(fake_users_db)
+                
                 return {"message": "User deleted successfully"}
         
         raise HTTPException(

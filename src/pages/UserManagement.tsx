@@ -15,6 +15,7 @@ import {
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { User } from '../types'
+import { userService } from '../services/api'
 
 const { Option } = Select
 
@@ -25,31 +26,6 @@ const UserManagement: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false)
   const [editingUser, setEditingUser] = useState<User | null>(null)
 
-  // 模拟用户数据
-  const mockUsers: User[] = [
-    {
-      id: 1,
-      username: 'admin',
-      email: 'admin@example.com',
-      role: 'admin',
-      created_at: '2024-01-01 10:00:00'
-    },
-    {
-      id: 2,
-      username: 'analyst',
-      email: 'analyst@example.com',
-      role: 'user',
-      created_at: '2024-01-02 11:30:00'
-    },
-    {
-      id: 3,
-      username: 'operator',
-      email: 'operator@example.com',
-      role: 'user',
-      created_at: '2024-01-03 09:15:00'
-    }
-  ]
-
   useEffect(() => {
     loadUsers()
   }, [])
@@ -57,13 +33,11 @@ const UserManagement: React.FC = () => {
   const loadUsers = async () => {
     setLoading(true)
     try {
-      // 模拟API调用
-      setTimeout(() => {
-        setUsers(mockUsers)
-        setLoading(false)
-      }, 500)
+      const userList = await userService.getUsers()
+      setUsers(userList)
     } catch (error) {
       message.error('加载用户列表失败')
+    } finally {
       setLoading(false)
     }
   }
@@ -82,9 +56,9 @@ const UserManagement: React.FC = () => {
 
   const handleDelete = async (userId: number) => {
     try {
-      // 模拟API调用
-      setUsers(users.filter(user => user.id !== userId))
+      await userService.deleteUser(userId)
       message.success('删除用户成功')
+      loadUsers() // 重新加载用户列表
     } catch (error) {
       message.error('删除用户失败')
     }
@@ -96,26 +70,20 @@ const UserManagement: React.FC = () => {
       
       if (editingUser) {
         // 编辑用户
-        const updatedUsers = users.map(user =>
-          user.id === editingUser.id ? { ...user, ...values } : user
-        )
-        setUsers(updatedUsers)
+        await userService.updateUser(editingUser.id!, values)
         message.success('更新用户成功')
       } else {
         // 新增用户
-        const newUser: User = {
-          id: Math.max(...users.map(u => u.id)) + 1,
-          ...values,
-          created_at: new Date().toISOString().replace('T', ' ').substring(0, 19)
-        }
-        setUsers([...users, newUser])
+        await userService.createUser(values)
         message.success('创建用户成功')
       }
       
       setModalVisible(false)
       form.resetFields()
-    } catch (error) {
-      message.error('操作失败，请检查输入')
+      loadUsers() // 重新加载用户列表
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.detail || '操作失败，请检查输入'
+      message.error(errorMessage)
     }
   }
 
