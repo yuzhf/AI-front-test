@@ -16,6 +16,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { User } from '../types'
 import { userService } from '../services/api'
+import { useAuth } from '../contexts/AuthContext'
 
 const { Option } = Select
 
@@ -25,6 +26,10 @@ const UserManagement: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [modalVisible, setModalVisible] = useState(false)
   const [editingUser, setEditingUser] = useState<User | null>(null)
+  const { user: currentUser } = useAuth()
+
+  // 检查是否为管理员
+  const isAdmin = currentUser?.role === 'admin'
 
   useEffect(() => {
     loadUsers()
@@ -127,34 +132,41 @@ const UserManagement: React.FC = () => {
       title: '操作',
       key: 'action',
       width: 150,
-      render: (_, record) => (
-        <Space size="middle">
-          <Button
-            type="primary"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-          >
-            编辑
-          </Button>
-          <Popconfirm
-            title="确定要删除这个用户吗？"
-            onConfirm={() => handleDelete(record.id)}
-            okText="确定"
-            cancelText="取消"
-          >
+      render: (_, record) => {
+        // 只有管理员才能看到操作按钮
+        if (!isAdmin) {
+          return <span style={{ color: '#999' }}>无权限</span>
+        }
+        
+        return (
+          <Space size="middle">
             <Button
               type="primary"
-              danger
               size="small"
-              icon={<DeleteOutlined />}
-              disabled={record.username === 'admin'}
+              icon={<EditOutlined />}
+              onClick={() => handleEdit(record)}
             >
-              删除
+              编辑
             </Button>
-          </Popconfirm>
-        </Space>
-      )
+            <Popconfirm
+              title="确定要删除这个用户吗？"
+              onConfirm={() => handleDelete(record.id)}
+              okText="确定"
+              cancelText="取消"
+            >
+              <Button
+                type="primary"
+                danger
+                size="small"
+                icon={<DeleteOutlined />}
+                disabled={record.username === 'admin'}
+              >
+                删除
+              </Button>
+            </Popconfirm>
+          </Space>
+        )
+      }
     }
   ]
 
@@ -163,15 +175,25 @@ const UserManagement: React.FC = () => {
       <h1 style={{ marginBottom: 24 }}>用户管理</h1>
       
       <Card>
-        <div style={{ marginBottom: 16 }}>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={handleAdd}
-          >
-            新增用户
-          </Button>
-        </div>
+        {/* 只有管理员才能看到新增用户按钮 */}
+        {isAdmin && (
+          <div style={{ marginBottom: 16 }}>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={handleAdd}
+            >
+              新增用户
+            </Button>
+          </div>
+        )}
+        
+        {/* 普通用户显示提示信息 */}
+        {!isAdmin && (
+          <div style={{ marginBottom: 16, padding: '8px 12px', background: '#f0f0f0', borderRadius: '4px' }}>
+            <span style={{ color: '#666' }}>📋 用户列表（只读模式）</span>
+          </div>
+        )}
         
         <Table
           columns={columns}

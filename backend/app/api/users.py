@@ -41,8 +41,8 @@ async def get_current_user_info(current_user: dict = Depends(get_current_user)):
     }
 
 @router.get("/users")
-async def get_users(current_user: dict = Depends(require_admin)):
-    """获取用户列表（需要管理员权限）"""
+async def get_users(current_user: dict = Depends(get_current_user)):
+    """获取用户列表（所有登录用户都可以查看）"""
     try:
         users = UserService.get_all_users()
         return users
