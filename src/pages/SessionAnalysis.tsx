@@ -1,21 +1,23 @@
 import React, { useState, useEffect } from 'react'
-import { 
-  Table, 
-  Card, 
-  Form, 
-  Input, 
-  Button, 
-  Space, 
-  DatePicker, 
-  Select, 
-  Tag, 
+import {
+  Table,
+  Card,
+  Form,
+  Input,
+  Button,
+  Space,
+  DatePicker,
+  Select,
+  Tag,
   Tooltip,
   Row,
-  Col
+  Col,
+  message
 } from 'antd'
 import { SearchOutlined, ReloadOutlined, DownloadOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
-import { SessionData } from '../types'
+import { SessionData, QueryParams } from '../types'
+import { sessionService } from '../services/api'
 
 const { RangePicker } = DatePicker
 const { Option } = Select
@@ -29,75 +31,88 @@ const SessionAnalysis: React.FC = () => {
     current: 1,
     pageSize: 20
   })
+  const [timeRange, setTimeRange] = useState<any>(null)
 
-  // 模拟数据
-  const mockData: SessionData[] = [
-    {
-      timestamp: '2024-01-15 14:30:25',
-      src_ip: '192.168.1.100',
-      dst_ip: '8.8.8.8',
-      src_port: 5432,
-      dst_port: 53,
-      protocol: 17,
-      total_packets: 24,
-      total_bytes: 1536,
-      up_packets: 12,
-      up_bytes: 768,
-      down_packets: 12,
-      down_bytes: 768,
-      duration: 120.5,
-      avg_pps: 0.2,
-      avg_bps: 12.8,
-      min_packet_size: 64,
-      max_packet_size: 64,
-      avg_packet_size: 64,
-      protocol_name: 'DNS',
-      protocol_confidence: 95,
-      app_name: 'DNS Query',
-      app_confidence: 90,
-      matched_domain: 'google.com',
-      first_seen: '2024-01-15 14:30:25',
-      last_seen: '2024-01-15 14:32:25',
-      tcp_flags: '',
-      retransmissions: 0,
-      out_of_order: 0,
-      lost_packets: 0
-    }
-  ]
+  const [filters, setFilters] = useState<QueryParams>({})
 
   useEffect(() => {
     loadData()
+    loadTimeRange()
   }, [pagination.current, pagination.pageSize])
+
+  useEffect(() => {
+    loadData()
+  }, [filters])
+
+  const loadTimeRange = async () => {
+    try {
+      const range = await sessionService.getTimeRange()
+      setTimeRange(range)
+    } catch (error) {
+      console.error('Failed to load time range:', error)
+    }
+  }
 
   const loadData = async () => {
     setLoading(true)
     try {
-      // 模拟API调用
-      setTimeout(() => {
-        setData(Array(20).fill(null).map((_, index) => ({
-          ...mockData[0],
-          src_ip: `192.168.1.${100 + index}`,
-          dst_ip: `8.8.8.${8 + (index % 4)}`,
-          src_port: 5432 + index,
-          timestamp: new Date(Date.now() - index * 60000).toISOString().replace('T', ' ').substring(0, 19)
-        })))
-        setTotal(1000)
-        setLoading(false)
-      }, 1000)
+      const params: QueryParams = {
+        ...filters,
+        limit: pagination.pageSize,
+        offset: (pagination.current - 1) * pagination.pageSize
+      }
+
+      const result = await sessionService.getSessionData(params)
+      setData(result.data)
+      setTotal(result.total)
     } catch (error) {
+      console.error('Failed to load session data:', error)
+      message.error('加载数据失败，请重试')
+    } finally {
       setLoading(false)
     }
   }
 
   const handleSearch = () => {
+    const formValues = form.getFieldsValue()
+    const searchFilters: QueryParams = {}
+
+    if (formValues.timeRange && formValues.timeRange.length === 2) {
+      searchFilters.start_time = formValues.timeRange[0].format('YYYY-MM-DD HH:mm:ss')
+      searchFilters.end_time = formValues.timeRange[1].format('YYYY-MM-DD HH:mm:ss')
+    }
+
+    if (formValues.srcIp) {
+      searchFilters.src_ip = formValues.srcIp
+    }
+
+    if (formValues.dstIp) {
+      searchFilters.dst_ip = formValues.dstIp
+    }
+
+    if (formValues.protocol) {
+      searchFilters.protocol = formValues.protocol
+    }
+
+    setFilters(searchFilters)
     setPagination({ ...pagination, current: 1 })
-    loadData()
   }
 
   const handleReset = () => {
     form.resetFields()
+    setFilters({})
     setPagination({ ...pagination, current: 1 })
-    loadData()
+  }
+
+  const handleExport = async () => {
+    try {
+      message.loading('正在导出数据...')
+      await sessionService.exportSessions('csv', filters)
+      message.success('数据导出成功')
+    } catch (error) {
+      console.error('Export failed:', error)
+      message.error('导出数据失败，请重试')
+    }
   }
 
   const formatBytes = (bytes: number) => {
@@ -199,7 +214,15 @@ const SessionAnalysis: React.FC = () => {
           <Row gutter={16} style={{ width: '100%' }}>
             <Col span={8}>
               <Form.Item label="时间范围" name="timeRange">
-                <RangePicker showTime style={{ width: '100%' }} />
+                <RangePicker
+                  showTime
+                  style={{ width: '100%' }}
+                  placeholder={
+                    timeRange?.min_time && timeRange?.max_time
+                      ? [`数据范围: ${timeRange.min_time.slice(0, 16)}`, `至 ${timeRange.max_time.slice(0, 16)}`]
+                      : ['开始时间', '结束时间']
+                  }
+                />
               </Form.Item>
             </Col>
             <Col span={4}>
@@ -237,7 +260,7 @@ const SessionAnalysis: React.FC = () => {
                   <Button icon={<ReloadOutlined />} onClick={handleReset}>
                     重置
                   </Button>
-                  <Button icon={<DownloadOutlined />}>
+                  <Button icon={<DownloadOutlined />} onClick={handleExport}>
                     导出
                   </Button>
                 </Space>

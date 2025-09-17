@@ -1,0 +1,10 @@
+nohup: ignoring input
+
+> ai-front-test@0.0.0 dev
+> vite
+
+
+  VITE v4.5.14  ready in 431 ms
+
+  ➜  Local:   http://localhost:3000/
+  ➜  Network: http://10.33.10.9:3000/

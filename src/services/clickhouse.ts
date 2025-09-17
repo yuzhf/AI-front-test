@@ -2,8 +2,8 @@ import axios from 'axios'
 import { SessionData, QueryParams } from '../types'
 
 const CLICKHOUSE_URL = process.env.REACT_APP_CLICKHOUSE_URL || 'http://localhost:8123'
-const DATABASE = process.env.REACT_APP_DATABASE || 'network_analysis'
-const TABLE = process.env.REACT_APP_TABLE || 'sessions'
+const DATABASE = process.env.REACT_APP_DATABASE || 'traffic_analysis'
+const TABLE = process.env.REACT_APP_TABLE || 'flow_stats'
 
 interface ClickHouseQueryResult {
   data: any[]

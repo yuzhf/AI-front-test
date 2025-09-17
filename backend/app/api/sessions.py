@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 from app.models.schemas import SessionResponse, QueryParams, StatsResponse
-from app.services.clickhouse_service import clickhouse_service
+from app.services.clickhouse_service import get_clickhouse_service
 from app.services.auth_service import get_current_user
 
 router = APIRouter()
@@ -21,7 +21,7 @@ async def get_sessions(
     """获取会话数据列表"""
     try:
         offset = (page - 1) * size
-        result = clickhouse_service.get_session_data(
+        result = get_clickhouse_service().get_session_data(
             start_time=start_time,
             end_time=end_time,
             src_ip=src_ip,
@@ -45,42 +45,17 @@ async def get_sessions(
 async def get_session_stats(current_user: dict = Depends(get_current_user)):
     """获取会话统计信息"""
     try:
-        stats = clickhouse_service.get_session_stats()
-        
-        # 格式化数据
-        def format_bytes(bytes_count):
-            if bytes_count == 0:
-                return "0 B"
-            k = 1024
-            sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-            i = 0
-            while bytes_count >= k and i < len(sizes) - 1:
-                bytes_count /= k
-                i += 1
-            return f"{bytes_count:.1f} {sizes[i]}"
-        
-        def format_speed(bps):
-            if bps == 0:
-                return "0 bps"
-            k = 1000
-            sizes = ['bps', 'Kbps', 'Mbps', 'Gbps']
-            i = 0
-            while bps >= k and i < len(sizes) - 1:
-                bps /= k
-                i += 1
-            return f"{bps:.0f} {sizes[i]}"
-        
-        formatted_stats = {
+        stats = get_clickhouse_service().get_session_stats()
+
+        # 返回原始数据，让前端处理格式化
+        return {
             "total_sessions": stats["total_sessions"],
-            "total_traffic": format_bytes(stats["total_bytes"]),
-            "avg_speed": format_speed(stats["avg_speed"]),
-            "security_score": 85,  # 默认安全评分
+            "total_packets": stats["total_packets"],
+            "total_traffic": stats["total_traffic"],  # 总字节数
             "unique_ips": stats["unique_ips"],
             "last_activity": stats["last_activity"]
         }
-        
-        return formatted_stats
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取统计信息失败: {str(e)}")
 
@@ -91,31 +66,19 @@ async def get_top_ips(
 ):
     """获取热门IP统计"""
     try:
-        top_ips = clickhouse_service.get_top_ips(limit=limit)
-        
-        # 格式化流量数据
-        def format_traffic(bytes_count):
-            if bytes_count == 0:
-                return "0 B"
-            k = 1024
-            sizes = ['B', 'KB', 'MB', 'GB']
-            i = 0
-            while bytes_count >= k and i < len(sizes) - 1:
-                bytes_count /= k
-                i += 1
-            return f"{bytes_count:.1f} {sizes[i]}"
-        
+        top_ips = get_clickhouse_service().get_top_ips(limit=limit)
+
+        # 返回原始数据，前端处理格式化
         formatted_ips = []
         for ip_data in top_ips:
             formatted_ips.append({
                 "ip": ip_data["ip"],
-                "sessions": ip_data["sessions"],
-                "traffic": format_traffic(ip_data["traffic_bytes"]),
-                "risk": ip_data.get("risk", "low")
+                "session_count": ip_data["sessions"],  # 会话数
+                "total_bytes": ip_data["traffic_bytes"]  # 字节数
             })
-        
+
         return formatted_ips
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取热门IP失败: {str(e)}")
 
@@ -123,10 +86,19 @@ async def get_top_ips(
 async def get_protocol_stats(current_user: dict = Depends(get_current_user)):
     """获取协议统计信息"""
     try:
-        protocols = clickhouse_service.get_protocol_stats()
+        protocols = get_clickhouse_service().get_protocol_stats()
         return protocols
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取协议统计失败: {str(e)}")
+
+@router.get("/sessions/time-range")
+async def get_time_range(current_user: dict = Depends(get_current_user)):
+    """获取数据的时间范围"""
+    try:
+        time_range = get_clickhouse_service().get_time_range()
+        return time_range
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取时间范围失败: {str(e)}")
 
 @router.get("/sessions/export")
 async def export_sessions(
@@ -142,7 +114,7 @@ async def export_sessions(
     """导出会话数据"""
     try:
         # 获取所有符合条件的数据
-        result = clickhouse_service.get_session_data(
+        result = get_clickhouse_service().get_session_data(
             start_time=start_time,
             end_time=end_time,
             src_ip=src_ip,

@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { SessionData, QueryParams, User } from '../types'
 
-const API_BASE_URL = 'http://localhost:8000/api'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://10.33.10.9:8000/api'
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -71,6 +71,11 @@ export const sessionService = {
 
   async getProtocolStats(): Promise<any> {
     const response = await api.get('/sessions/protocols')
+    return response.data
+  },
+
+  async getTimeRange(): Promise<any> {
+    const response = await api.get('/sessions/time-range')
     return response.data
   },
 
